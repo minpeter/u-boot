@@ -7145,10 +7145,16 @@ static void h713_disp_sample(void)
  *
  * Two deliberate omissions:
  *
- *   - The backlight is not touched. Which PWM drives it is still unresolved:
- *     display_cfg.xml says channel 0, panel_config.ini says channel 5, and the
- *     dimmer we implemented drives PWM2 on PB4, which matches neither. Turning
- *     off the wrong channel would be theatre.
+ *   - The backlight is not touched. Which channel drives it is settled now:
+ *     the HY310's panel_config.ini asks for PWM channel 2 at 25 kHz, exactly
+ *     the PWM2-on-PB4 dimmer we built. The channel 5 this note used to quote
+ *     is board B's ini, as line 425 already says, and display_cfg.xml's
+ *     channel 0 at 1.2 MHz is the firmware's own default, which the vendor
+ *     ARM overrides with the six [PWMSetting] words (AP3d 7.2). What is still
+ *     open is the polarity -- the ini says 1, the stock runtime DTB's
+ *     panel_pwm_pol says 0, and we follow the DTB -- and the measurement in
+ *     docs/dead-ends.md, where stepping PWM2's duty moved no light on two
+ *     boards. Switching a channel off that never moved light buys nothing.
  *
  *   - The display PLLs and mod clocks are left running. Disabling a block's
  *     clock while something still reaches for it is the documented way to wedge
