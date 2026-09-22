@@ -5708,11 +5708,32 @@ static int h713_disp_panel_patch(ulong blob, const struct h713_disp_sel *sel)
 		{ 0x05800000, 17, 0x1,    c->inv_vsync },
 		{ 0x05800000, 18, 0x1,    c->inv_de },
 		{ 0x05800000, 24, 0x1,    c->inv_dclk },
-		/* display PLL: LVDS drive currents and spread spectrum */
+		/*
+		 * display PLL: LVDS drive currents. The vendor kernel patches
+		 * a third field in both of these, lvds0_pol / lvds1_pol in
+		 * [21:16] (AP3m 1.4), which no panel row of ours carries; the
+		 * records keep their own value there. Board B's 0x058c0024
+		 * record is a plain zero -- one LVDS link instead of two
+		 * (AP3m 1.6) -- so on that board these two entries write a
+		 * drive current into the second link's register. Neither has
+		 * been measured on hardware; see umbau/work/Q8/REPORT.txt.
+		 */
 		{ 0x058c0020, 24, 0x3f,   c->de_current },
 		{ 0x058c0020,  0, 0x7,    c->odd_current },
 		{ 0x058c0024, 24, 0x3f,   c->de_current },
 		{ 0x058c0024,  0, 0x7,    c->even_current },
+		/*
+		 * Spread spectrum on. This entry never fires and cannot: the
+		 * 0x058c0014 record of both files carries mask 0000ffff, so
+		 * bit 24 is outside the record's own mask and the guard below
+		 * refuses it -- exactly as the vendor's
+		 * __update_panel_set_member 0xE920 refuses its own. What
+		 * actually sets the bit is the prologue, unconditionally on
+		 * both boards: 0x02001050 |= 0x01000000, which AP3m's open
+		 * question says is either an alias of 0x058c0014 or a second
+		 * CCU. Kept so the table stays the vendor's list; do not read
+		 * it as this board's switch.
+		 */
 		{ 0x058c0014, 24, 0x1,    c->ssc_en },
 		/* TCON control: single/dual port */
 		{ 0x0588000c, 12, 0x3,    c->dual_port },
@@ -5725,6 +5746,13 @@ static int h713_disp_panel_patch(ulong blob, const struct h713_disp_sel *sel)
 		 * the ini's raw totals (see struct h713_panel_cfg). The HY310
 		 * keeps the 2127/1119 it has always written; board B stops
 		 * driving a 1361x761 mixer raster into a 1360x760 TCON.
+		 *
+		 * The vendor kernel writes panel_htotal and panel_vtotal RAW
+		 * into these two, which AP3m 3d reports as a vendor bug -- a
+		 * device tree that did carry them would be off by one. Ours
+		 * is deliberately the other way round. No stock device tree
+		 * carries the properties, so the vendor patch never fires and
+		 * nothing on a stock image depends on it.
 		 */
 		{ 0x0525c000, 16, 0xffff, c->vtotal - 1 },
 		{ 0x0525c000,  0, 0xffff, c->htotal - 1 },
@@ -5747,7 +5775,16 @@ static int h713_disp_panel_patch(ulong blob, const struct h713_disp_sel *sel)
 		 */
 		{ 0x0524c010, 16, 0xffff, c->vtotal - 1 },
 		{ 0x0524c010,  0, 0xffff, c->htotal - 1 },
-		/* display engine */
+		/*
+		 * display engine. The vendor kernel patches panel_width into
+		 * 0x0524c004[31:16] as well, but AP3m 3c flags the site: both
+		 * files default it to 0x00100010 and plane 0's twin
+		 * 0x05248004 holds the same, which is not a width. On a stock
+		 * image the patch never fires -- no device tree carries
+		 * panel_width -- so this entry is the one place where we act
+		 * and stock does not. It is what the HY310 has been running;
+		 * a two-sided perturbation is owed before anyone trusts it.
+		 */
 		{ 0x0524c004, 16, 0xffff, c->width },
 		{ 0x0524c004,  0, 0xffff, c->vsync + c->vbp },
 		{ 0x0524c014,  8, 0xff,   c->vsync },
@@ -5764,6 +5801,12 @@ static int h713_disp_panel_patch(ulong blob, const struct h713_disp_sel *sel)
 		 * that was measured writes it.
 		 */
 		{ 0x05280084, 16, c->layer_h_mask, c->height },
+		/*
+		 * The vendor kernel subtracts one here when mirror_mode is 1
+		 * or 3 (AP3m 1.4). Both our rows declare mirror_mode 0, so
+		 * the rule would change nothing today; it belongs with
+		 * whoever gives a board a mirrored row.
+		 */
 		{ 0x05280088,  0, 0xffff, c->vsync + c->vbp },
 		/*
 		 * The layer's pixel X origin, restored 2026-08-04.
@@ -5787,6 +5830,12 @@ static int h713_disp_panel_patch(ulong blob, const struct h713_disp_sel *sel)
 		 * Patching the record rather than writing the register after
 		 * the fact also survives h713_disp_reassert_osd, which replays
 		 * DE block 5 from this same blob.
+		 *
+		 * The vendor kernel computes it instead, max(hsync+hbp-77, 0)
+		 * (AP3m 1.4), and on both our rows the formula reproduces the
+		 * constant exactly: 44+88-77 = 55, and 20+40-77 clamps to 0.
+		 * The constant stays because it is the measured value, but a
+		 * third board's row can be derived rather than guessed.
 		 */
 		{ 0x0528008c,  0, 0xffff, c->layer_x },
 	};
