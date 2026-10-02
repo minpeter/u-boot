@@ -302,11 +302,10 @@ struct h713_panel_cfg {
 	 */
 	u32 height;
 	/*
-	 * 0x05800000[4:3]. This used to be fed from color_depth, which cannot
-	 * be what the field wants: 8 & 3 is zero on any board, so the write
-	 * carried no information. It reads as an encoding selector like the
-	 * XML's lvds_format. Board B keeps the zero it has been running;
-	 * 1 is what an HY310's stock bootloader leaves there.
+	 * 0x05800000[4:3]: libpq's lvds_set_bitwidth encodes 6/8/10-bit
+	 * output as 0/1/2. The value is an encoding, not the bit count.
+	 * Both current profiles declare ColorDepth=8 and their original
+	 * LogoRegData records contain selector 1.
 	 */
 	u32 lvds_bitsel;
 	/* 0x0528008c, the layer's pixel X origin. */
@@ -348,8 +347,8 @@ static const struct h713_panel_cfg h713_panel_cfg_board_b = {
 	.hbp = 40, .vbp = 20, .width = 1280, .height = 720,
 	/* panel_config.ini: PanelHsyncPol 0, PanelVsyncPol 0. */
 	.hsync_pol = 0, .vsync_pol = 0,
-	/* All three chosen so this board's registers do not move. */
-	.lvds_bitsel = 0, .layer_x = 0, .ssc_mask = 0, .ssc_reg = 0,
+	/* Stock's 8-bit depth (selector 1); origin and SSC stay unchanged. */
+	.lvds_bitsel = 1, .layer_x = 0, .ssc_mask = 0, .ssc_reg = 0,
 	.layer_h_mask = 0,
 };
 
