@@ -28,6 +28,9 @@
 #include <asm/unaligned.h>
 #include <u-boot/sha256.h>
 
+/* arch/arm/mach-sunxi/h713_hdcp14.c */
+int h713_hdcp14_install(void);
+
 #define H713_MIPS_FW_ADDR		0x4b100000UL
 /* First row's size; the starting value for h713_mips_fw_size. */
 #define H713_MIPS_FW_SIZE		0x00132910UL
@@ -3134,6 +3137,23 @@ static void h713_capture_prepare(void)
 	else
 		printf("H713 MIPS: TVFE/TVCAP powered, capture clocks up before "
 		       "release\n");
+
+	/*
+	 * Now, and not earlier: the key sink lives in the TV domain, so a transfer
+	 * into it while that domain is still unpowered completes in the engine
+	 * (ESR 0) and latches nothing - the firmware's "key loaded" bit stays
+	 * clear and a source gets no protected picture. Measured 05.10.: pushed
+	 * before this point, "key not in the sink" every time, authentication
+	 * refused; the vendor's own loader pushes after powering the domain too.
+	 * A failure is not fatal here - the wait is disarmed either way and the
+	 * board comes up without HDCP. Opt out with h713_hdcp14=0, which
+	 * h713_hdcp14_install() handles itself and says so on the console. The
+	 * test for it used to sit HERE as well, so with h713_hdcp14=0 the
+	 * function was never entered and nothing was printed at all - a log in
+	 * which "skipped on purpose" and "this build has no HDCP code" look
+	 * exactly alike. One owner for the decision, and it talks.
+	 */
+	(void)h713_hdcp14_install();
 }
 
 /*
@@ -4209,6 +4229,28 @@ static ulong h713_mips_find_hdcp_wait(void)
 	return found;
 }
 
+/*
+ * The display firmware polls HDMI-RX 0x06840093 bit 0 for "HDCP 1.4 key
+ * loaded" in Rx_HDCP14_LoadKey and gives up after 0x33 ticks of a counter that
+ * does not run this early, so a missing key turns a survivable error into an
+ * endless loop (doku/40, doku/112). Disarming that loop is therefore a crutch
+ * for the case where nobody loaded the key - not something to do when the key
+ * IS in the sink, because then the firmware finds it and returns at once, and
+ * disarming only robs it of the branch that makes HDCP 1.4 work at all.
+ *
+ * So we ask the hardware instead of guessing: the bit is the same one the
+ * firmware reads. Unset (no key, or a push that did not take) -> keep the
+ * crutch. Set -> leave the firmware alone. "h713_hdcp14_wait" still overrides
+ * both ways, for measuring.
+ */
+#define H713_HDMIRX_HDCP14_STATUS	0x06840093
+
+static bool h713_hdcp14_key_loaded(void)
+{
+	return (readb((void *)(uintptr_t)H713_HDMIRX_HDCP14_STATUS) &
+		BIT(0)) != 0;
+}
+
 static int h713_mips_release_raw(bool skip_hdcp_wait, bool publish_shmem,
 				 bool trace, bool stability, bool comm_trace)
 {
@@ -4225,6 +4267,37 @@ static int h713_mips_release_raw(bool skip_hdcp_wait, bool publish_shmem,
 	if ((trace && stability) || (trace && comm_trace) ||
 	    (stability && comm_trace))
 		return -EINVAL;
+
+	/*
+	 * The patch exists because at MIPS start the ticks this loop counts were
+	 * observed not to run, so the vendor loop would never finish (doku/112).
+	 * It has to go once HDCP 1.4 works, because it is that very routine which
+	 * moves the key from the sink into the receiver. h713_hdcp14_wait=1 leaves
+	 * the vendor loop alone, so both can be measured on one build.
+	 */
+	if (skip_hdcp_wait) {
+		bool loaded = h713_hdcp14_key_loaded();
+
+		/*
+		 * The firmware's wait gets disarmed either way. Measured on
+		 * 05.10.: HDCP 1.4 authenticates with the wait disarmed (source
+		 * reported "Enabled" twice, "Desired" without the key), while
+		 * LEAVING the wait in place hangs the board in this very
+		 * function even with the key in the sink and bit 0 set. So the
+		 * bit is worth reporting and nothing more; a boot that stops at
+		 * the logo is never worth a branch we do not need.
+		 * "h713_hdcp14_wait=1" still forces the firmware to wait, for
+		 * experiments only - it can hang the board.
+		 */
+		printf("H713 MIPS: HDCP 1.4 key %s (0x%08x bit 0)\n",
+		       loaded ? "is in the sink" : "not in the sink",
+		       H713_HDMIRX_HDCP14_STATUS);
+		if (env_get_yesno("h713_hdcp14_wait") == 1) {
+			printf("H713 MIPS: HDCP key-load wait left alone "
+			       "(h713_hdcp14_wait=1) -- can hang\n");
+			skip_hdcp_wait = false;
+		}
+	}
 
 	if (skip_hdcp_wait) {
 		ulong pinned = h713_mips_fw ? h713_mips_fw->hdcp_wait_va : 0;
