@@ -393,9 +393,16 @@ config SUNXI_SCP_BASE
 	hex
 	default 0x00050000 if MACH_SUN50I || MACH_SUN50I_H5
 	default 0x00114000 if MACH_SUN50I_H6
+	default 0x48100000 if MACH_SUN50I_H713
 	default 0x0
 	help
 	  Address where SCP firmware is loaded, or zero if it is not used.
+
+	  On the H713 the SPL itself occupies SRAM A2 (0x104000 + 0x14000), so
+	  scp.bin is staged in DRAM where the vendor boot package puts it and
+	  BL31 copies it into SRAM and starts the AR100 (FB-CRUST tfa-0002).
+	  Without scp.bin the FIT keeps an empty "scp" loadable, which the SPL
+	  skips ("Skip load 'scp': image size is 0!"), and BL31 finds no image.
 
 config SUNXI_A64_TIMER_ERRATUM
 	bool
