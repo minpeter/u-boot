@@ -56,12 +56,15 @@
 #include <command.h>
 #include <blk.h>
 #include <bootm.h>
+#include <dm.h>
 #include <env.h>
 #include <cpu_func.h>
 #include <linux/arm-smccc.h>
 #include <part.h>
 #include <vsprintf.h>
+#include <wdt.h>
 #include <asm/io.h>
+#include <linux/bitops.h>
 #include <linux/delay.h>
 #include <asm/global_data.h>
 #include <asm/unaligned.h>
@@ -108,38 +111,41 @@ DECLARE_GLOBAL_DATA_PTR;
  * The watchdog as a safety net around the push. The engine task takes
  * microseconds; if it ever wedges the bus, a reset is far better than a board
  * parked at the logo with no way back (a real power cut is not available while
- * USB feeds the board). Armed only if nobody else is driving it - U-Boot's own
- * driver stays off on this board ("WDT: Not starting watchdog@2051000"), and
- * double-driving it would be worse than no net at all.
+ * USB feeds the board).
  *
- * Feeding needs a real off/on pair: rewriting the active MODE register does NOT
- * restart the counter (cost us four needless resets to work out).
+ * It goes through U-Boot's watchdog driver (drivers/watchdog/sunxi_wdt.c, bound
+ * to the device tree's watchdog@2051000): register layout, key and timeout
+ * encoding live there, and the driver's own record of whether it runs stays
+ * true. Armed only if nobody else is driving it - U-Boot's own use stays off on
+ * this board ("WDT: Not starting watchdog@2051000"), but a bench session arms
+ * it by hand, and taking that over would be worse than no net at all. The
+ * uclass cannot tell whether the watchdog runs, so one read of the enable bit
+ * decides: at the address the device tree gives the device, at the MODE offset
+ * of the sun55i layout that sunxi_wdt.c uses for this compatible.
  */
-#define WDT_CFG			0x02051010UL
-#define WDT_MODE		0x02051014UL
-#define WDT_KEY			0x16aa0000UL
-#define WDT_CFG_SYSTEM		(WDT_KEY | 0x1UL)
-#define WDT_MODE_EN		0x1UL
-#define WDT_INTERVAL_6S		(0x6UL << 4)
+#define WDT_MODE_OFF		0x14		/* sun55i layout, as sunxi_wdt.c */
+#define WDT_MODE_EN		BIT(0)
+#define WDT_GUARD_MS		6000
 
-static bool wdt_armed_by_us;
-
-static void wdt_guard_on(void)
+static struct udevice *wdt_guard_on(void)
 {
-	wdt_armed_by_us = false;
-	if ((readl((void *)WDT_MODE) & WDT_MODE_EN) != 0UL)
-		return;			/* somebody else owns it - hands off */
-	writel(WDT_CFG_SYSTEM, (void *)WDT_CFG);
-	writel(WDT_KEY | WDT_INTERVAL_6S | WDT_MODE_EN, (void *)WDT_MODE);
-	wdt_armed_by_us = true;
+	struct udevice *dev;
+	void *base;
+
+	if (uclass_first_device_err(UCLASS_WDT, &dev)) {
+		printf("H713 HDCP: no watchdog device, pushing without the net\n");
+		return NULL;
+	}
+	base = dev_read_addr_ptr(dev);
+	if (!base || (readl(base + WDT_MODE_OFF) & WDT_MODE_EN))
+		return NULL;		/* somebody else owns it - hands off */
+	return wdt_start(dev, WDT_GUARD_MS, 0) ? NULL : dev;
 }
 
-static void wdt_guard_off(void)
+static void wdt_guard_off(struct udevice *dev)
 {
-	if (!wdt_armed_by_us)
-		return;
-	writel(WDT_KEY | WDT_INTERVAL_6S, (void *)WDT_MODE);
-	wdt_armed_by_us = false;
+	if (dev)
+		wdt_stop(dev);
 }
 
 /* Bounded compare of a NUL-terminated name field against a literal. */
@@ -317,12 +323,13 @@ static ulong hdcp14_stage(void)
 static int hdcp14_once(ulong what, ulong stage, unsigned long *verdict)
 {
 	struct arm_smccc_res res = { 0 };
+	struct udevice *wdt;
 
 	if (stage)
 		flush_dcache_range(stage, stage + SS_STAGE_BYTES);
-	wdt_guard_on();
+	wdt = wdt_guard_on();
 	arm_smccc_smc(H713_SIP_HDCP14_ONCE, what, 0, 0, 0, 0, 0, 0, &res);
-	wdt_guard_off();
+	wdt_guard_off(wdt);
 
 	/* Our SiP answers with SMC_RET1: the verdict is in a0, not a1. */
 	*verdict = res.a0;
