@@ -4233,15 +4233,15 @@ static ulong h713_mips_find_hdcp_wait(void)
  * The display firmware polls HDMI-RX 0x06840093 bit 0 for "HDCP 1.4 key
  * loaded" in Rx_HDCP14_LoadKey and gives up after 0x33 ticks of a counter that
  * does not run this early, so a missing key turns a survivable error into an
- * endless loop (doku/40, doku/112). Disarming that loop is therefore a crutch
- * for the case where nobody loaded the key - not something to do when the key
- * IS in the sink, because then the firmware finds it and returns at once, and
- * disarming only robs it of the branch that makes HDCP 1.4 work at all.
- *
- * So we ask the hardware instead of guessing: the bit is the same one the
- * firmware reads. Unset (no key, or a push that did not take) -> keep the
- * crutch. Set -> leave the firmware alone. "h713_hdcp14_wait" still overrides
- * both ways, for measuring.
+ * endless loop (doku/40, doku/112). On the boot path (h713_disp init) the
+ * loop is always disarmed: on 05.10.2026 HDCP 1.4 authenticated with it
+ * disarmed, and leaving it in place hung the board in that very function even
+ * with the key in the sink and the bit set. The bit - the same one the
+ * firmware reads - is read for the log only. The debug commands that pass no
+ * "nowait" (h713_disp test, h713_disp auto/<blob> without it, h713_mips
+ * release) leave the loop armed, as they always did. The "h713_hdcp14_wait"
+ * switch that could force the wait on the boot path is gone since 07.10.2026:
+ * stored by mistake, it hung the board at the logo.
  */
 #define H713_HDMIRX_HDCP14_STATUS	0x06840093
 
@@ -4271,9 +4271,8 @@ static int h713_mips_release_raw(bool skip_hdcp_wait, bool publish_shmem,
 	/*
 	 * The patch exists because at MIPS start the ticks this loop counts were
 	 * observed not to run, so the vendor loop would never finish (doku/112).
-	 * It has to go once HDCP 1.4 works, because it is that very routine which
-	 * moves the key from the sink into the receiver. h713_hdcp14_wait=1 leaves
-	 * the vendor loop alone, so both can be measured on one build.
+	 * It stays: with HDCP 1.4 working the wait still hangs (measured
+	 * 05.10.2026, see above).
 	 */
 	if (skip_hdcp_wait) {
 		bool loaded = h713_hdcp14_key_loaded();
@@ -4286,17 +4285,10 @@ static int h713_mips_release_raw(bool skip_hdcp_wait, bool publish_shmem,
 		 * function even with the key in the sink and bit 0 set. So the
 		 * bit is worth reporting and nothing more; a boot that stops at
 		 * the logo is never worth a branch we do not need.
-		 * "h713_hdcp14_wait=1" still forces the firmware to wait, for
-		 * experiments only - it can hang the board.
 		 */
 		printf("H713 MIPS: HDCP 1.4 key %s (0x%08x bit 0)\n",
 		       loaded ? "is in the sink" : "not in the sink",
 		       H713_HDMIRX_HDCP14_STATUS);
-		if (env_get_yesno("h713_hdcp14_wait") == 1) {
-			printf("H713 MIPS: HDCP key-load wait left alone "
-			       "(h713_hdcp14_wait=1) -- can hang\n");
-			skip_hdcp_wait = false;
-		}
 	}
 
 	if (skip_hdcp_wait) {
