@@ -1061,6 +1061,9 @@ static void h713_poweron_lines(void)
  *   0        cold start, mains just came on          -> gate
  *   "RUN1"   we were already up                      -> boot straight through
  *   "GATE"   power-off requested (written by TF-A)   -> gate
+ *   "STBY"   a standby did not finish (Linux marks    -> gate
+ *            it until the display core runs again)
+ *   other    unknown                                 -> gate
  *
  * GP7 is the fastboot handoff and is consumed and cleared by preboot; GP2, GP3
  * and GP6 are taken by the vendor firmware and by the ARISC driver.  GP5 is
@@ -1069,6 +1072,7 @@ static void h713_poweron_lines(void)
 #define H713_RTC_GP5_REG	0x07090114UL
 #define H713_GATE_RUN1		0x52554e31UL	/* "RUN1": system is up */
 #define H713_GATE_REQUESTED	0x47415445UL	/* "GATE": TF-A wants standby */
+#define H713_GATE_STANDBY	0x53544259UL	/* "STBY": a standby did not finish */
 
 /* 50 ms debounce is what the stock firmware applies to this key. */
 #define H713_GATE_POLL_MS	10
@@ -1208,6 +1212,8 @@ static void h713_power_gate(void)
 			gate = false;
 		} else if (flag == H713_GATE_REQUESTED) {
 			printf("gate: power-off requested (GP5 %08x)\n", flag);
+		} else if (flag == H713_GATE_STANDBY) {
+			printf("gate: a standby did not finish (GP5 %08x)\n", flag);
 		} else {
 			printf("gate: cold start (GP5 %08x)\n", flag);
 		}
