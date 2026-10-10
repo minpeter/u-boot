@@ -85,6 +85,12 @@ config H713_POWER_GATE
 	  the gate off without a rebuild, and holding the key for three seconds
 	  while the mains comes on bypasses it for one boot.
 
+	  On a cold start with a crust that can power off (contract page:
+	  BUILD2 bit 24), the gate does not wait on an ARM core but asks for
+	  PSCI SYSTEM_OFF: crust holds the board off with its rails cut, and
+	  the key or the remote wakes it into a warm start. Otherwise, and
+	  after "GATE" or "STBY", it waits for the key itself.
+
 	  For shipping images. Leave this off for bench, netboot and recovery
 	  builds, which must come up on mains alone.
 

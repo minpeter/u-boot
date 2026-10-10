@@ -42,6 +42,7 @@
 #include <asm/gpio.h>
 #include <sunxi_gpio.h>
 #include <asm/io.h>
+#include <asm/system.h>
 #include <u-boot/crc.h>
 #include <env_internal.h>
 #include <linux/libfdt.h>
@@ -1058,7 +1059,8 @@ static void h713_poweron_lines(void)
  * value written before a reset (U-Boot "reset", Linux "reboot" via PSCI, or a
  * watchdog reset) survives unchanged.  Hence:
  *
- *   0        cold start, mains just came on          -> gate
+ *   0        cold start, mains just came on          -> crust holds the board
+ *                                                       off, else gate
  *   "RUN1"   we were already up                      -> boot straight through
  *   "GATE"   power-off requested (written by TF-A)   -> gate
  *   "STBY"   a standby did not finish (Linux marks    -> gate
@@ -1068,6 +1070,22 @@ static void h713_poweron_lines(void)
  * GP7 is the fastboot handoff and is consumed and cleared by preboot; GP2, GP3
  * and GP6 are taken by the vendor firmware and by the ARISC driver.  GP5 is
  * free, and nothing between SPL and the kernel writes it.
+ *
+ * A cold start does not have to wait on an ARM core.  Since the power off
+ * through crust (TF-A sunxi_scp_off.c), Linux's poweroff leaves only crust
+ * awake on the ARISC with the board's rails cut: 0.3 W, where this loop draws
+ * 2.4-2.9 W.  The vendor firmware treats mains-on like its power off, and so
+ * does this gate: on a cold start it asks for PSCI SYSTEM_OFF instead of
+ * waiting, and BL31 hands the wait to crust as it does for Linux.  The power
+ * key or the remote's power code wakes crust, crust writes "RUN1" and resets
+ * the SoC, and the gate boots through.  The key held at mains-on still skips
+ * all of it, and h713_gate=0 still turns the gate off.
+ *
+ * Only a cold start goes that way, so there is at most one SYSTEM_OFF per
+ * mains-on: if crust does not take it, BL31 resets with "GATE" and the loop
+ * waits.  "GATE" and "STBY" wait in the loop as before - asking crust again
+ * after a failed standby would overwrite crust's record of the failure that
+ * the next boot reports.
  */
 #define H713_RTC_GP5_REG	0x07090114UL
 #define H713_GATE_RUN1		0x52554e31UL	/* "RUN1": system is up */
@@ -1079,6 +1097,18 @@ static void h713_poweron_lines(void)
 #define H713_GATE_DEBOUNCE_MS	50
 #define H713_GATE_BYPASS_MS	3000
 #define H713_GATE_NOTE_MS	60000
+
+/*
+ * crust's contract page in SRAM A2 (ARM view), the words TF-A reads too
+ * (sunxi_mmap.h; crust's platform/memory.h is the source).
+ */
+#define H713_SCP_SHARED		0x00123800UL
+#define H713_SCP_MAGIC_REG	(H713_SCP_SHARED + 0x000)
+#define H713_SCP_VERSION_REG	(H713_SCP_SHARED + 0x004)
+#define H713_SCP_BUILD2_REG	(H713_SCP_SHARED + 0x264)	/* contract v5 on */
+#define H713_SCP_MAGIC		0x33313748UL	/* "H713" */
+#define H713_SCP_VERSION	5
+#define H713_SCP_POWER_OFF	BIT(24)		/* BUILD2: H713_POWER_OFF */
 
 /*
  * The power key is PL4 in R_PIO: active low against an external pull-up, so no
@@ -1185,6 +1215,33 @@ static void h713_gate_wait(struct gpio_desc *key)
 		printf("\n");
 }
 
+/*
+ * Does the crust on the ARISC say it can hold the board off?  Magic, contract
+ * version 5 and BUILD2 bit 24 - the vendor's ARISC firmware and an older crust
+ * have none of that, and the gate then waits in its loop without the detour
+ * of a reset.  That a crust which says so also runs and is outside a standby
+ * is BL31's check before it asks; this one only saves the pointless reset.
+ */
+static bool h713_gate_crust_can_hold(void)
+{
+	u32 version, build2;
+
+	if (readl(H713_SCP_MAGIC_REG) != H713_SCP_MAGIC) {
+		printf("gate: no crust on the ARISC\n");
+		return false;
+	}
+
+	version = readl(H713_SCP_VERSION_REG);
+	build2 = version >= H713_SCP_VERSION ? readl(H713_SCP_BUILD2_REG) : 0;
+	if (!(build2 & H713_SCP_POWER_OFF)) {
+		printf("gate: crust (contract v%u, build2 %08x) cannot hold the board off\n",
+		       version, build2);
+		return false;
+	}
+
+	return true;
+}
+
 static void h713_power_gate(void)
 {
 	struct gpio_desc key;
@@ -1214,8 +1271,10 @@ static void h713_power_gate(void)
 			printf("gate: power-off requested (GP5 %08x)\n", flag);
 		} else if (flag == H713_GATE_STANDBY) {
 			printf("gate: a standby did not finish (GP5 %08x)\n", flag);
-		} else {
+		} else if (!flag) {
 			printf("gate: cold start (GP5 %08x)\n", flag);
+		} else {
+			printf("gate: unknown word in GP5 (%08x)\n", flag);
 		}
 	}
 
@@ -1235,6 +1294,16 @@ static void h713_power_gate(void)
 	if (gate && h713_gate_key_held(&key, H713_GATE_BYPASS_MS)) {
 		printf("gate: key held at power-on, bypass\n");
 		gate = false;
+	}
+
+	/*
+	 * A cold start hands the wait to crust (see the top of this block).
+	 * PSCI SYSTEM_OFF does not come back: crust takes the cluster down,
+	 * or BL31 resets with "GATE" and the next pass waits in the loop.
+	 */
+	if (gate && !flag && h713_gate_crust_can_hold()) {
+		printf("gate: crust holds the board off, the power key or the remote wakes it\n");
+		psci_system_off();
 	}
 
 	if (gate) {
