@@ -1086,6 +1086,11 @@ static void h713_poweron_lines(void)
  * waits.  "GATE" and "STBY" wait in the loop as before - asking crust again
  * after a failed standby would overwrite crust's record of the failure that
  * the next boot reports.
+ *
+ * Without crust no firmware watches the remote while the loop waits, so the
+ * loop reads the IR receiver itself (h713_gate_ir.c): the power key of a
+ * stock remote starts the board as the key on the device does.  With crust
+ * on the ARISC the remote stays crust's and the loop waits for the key alone.
  */
 #define H713_RTC_GP5_REG	0x07090114UL
 #define H713_GATE_RUN1		0x52554e31UL	/* "RUN1": system is up */
@@ -1105,10 +1110,17 @@ static void h713_poweron_lines(void)
 #define H713_SCP_SHARED		0x00123800UL
 #define H713_SCP_MAGIC_REG	(H713_SCP_SHARED + 0x000)
 #define H713_SCP_VERSION_REG	(H713_SCP_SHARED + 0x004)
+#define H713_SCP_STATUS_REG	(H713_SCP_SHARED + 0x008)	/* 31:16 heartbeat */
 #define H713_SCP_BUILD2_REG	(H713_SCP_SHARED + 0x264)	/* contract v5 on */
 #define H713_SCP_MAGIC		0x33313748UL	/* "H713" */
 #define H713_SCP_VERSION	5
 #define H713_SCP_POWER_OFF	BIT(24)		/* BUILD2: H713_POWER_OFF */
+#define H713_SCP_RUNNING	BIT(0)		/* STATUS */
+
+/* h713_gate_ir.c */
+void h713_gate_ir_start(void);
+int h713_gate_ir_poll(void);
+void h713_gate_ir_stop(void);
 
 /*
  * The power key is PL4 in R_PIO: active low against an external pull-up, so no
@@ -1173,12 +1185,17 @@ static bool h713_gate_key_held(struct gpio_desc *key, unsigned int ms)
  * alone did, a key still held from the back-door check above -- or simply held
  * a moment too long -- would start the boot the instant the gate opened, and
  * nobody would ever see the standby state.
+ *
+ * With @remote the same pass drains the IR receiver, and a power code ends
+ * the wait at once: a remote sends no release, and its repeat frames carry
+ * no code.  Returns that code, or -1 for the key.
  */
-static void h713_gate_wait(struct gpio_desc *key)
+static int h713_gate_wait(struct gpio_desc *key, bool remote)
 {
 	unsigned int low_ms = 0, high_ms = 0;
 	bool idle_seen = false, pressed = false, noted = false;
 	ulong last_note = get_timer(0);
+	int code = -1;
 
 	printf("gate: waiting for power key\n");
 
@@ -1200,6 +1217,12 @@ static void h713_gate_wait(struct gpio_desc *key)
 			}
 		}
 
+		if (remote) {
+			code = h713_gate_ir_poll();
+			if (code >= 0)
+				break;
+		}
+
 		/* One dot a minute: proof of life without flooding the log. */
 		if (get_timer(last_note) >= H713_GATE_NOTE_MS) {
 			last_note = get_timer(0);
@@ -1213,6 +1236,8 @@ static void h713_gate_wait(struct gpio_desc *key)
 
 	if (noted)
 		printf("\n");
+
+	return code;
 }
 
 /*
@@ -1242,13 +1267,56 @@ static bool h713_gate_crust_can_hold(void)
 	return true;
 }
 
+/*
+ * Does crust run on the ARISC?  Its page in SRAM A2 outlives a reset and a
+ * change of firmware, so the page alone does not say: crust runs when the
+ * page says running and its main loop moves the heartbeat, microseconds
+ * apart - BL31's test before it hands crust the power off.
+ */
+static bool h713_gate_crust_runs(void)
+{
+	u32 status = readl(H713_SCP_STATUS_REG);
+	unsigned int i;
+
+	if (readl(H713_SCP_MAGIC_REG) != H713_SCP_MAGIC ||
+	    !(status & H713_SCP_RUNNING))
+		return false;
+
+	for (i = 0; i < 100; i++) {
+		udelay(100);
+		if (readl(H713_SCP_STATUS_REG) != status)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * The remote's power key wakes the loop too, unless crust runs on the ARISC:
+ * on an image with standby the remote is crust's, which reads it in its own
+ * off state, and the loop stays as it was there.
+ */
+static bool h713_gate_remote_start(void)
+{
+	if (!IS_ENABLED(CONFIG_H713_POWER_GATE_IR))
+		return false;
+
+	if (h713_gate_crust_runs()) {
+		printf("gate: crust runs on the ARISC, the remote is not read here\n");
+		return false;
+	}
+
+	h713_gate_ir_start();
+	printf("gate: the remote's power key starts the board too\n");
+	return true;
+}
+
 static void h713_power_gate(void)
 {
 	struct gpio_desc key;
 	const char *sel;
-	bool gate = true;
+	bool gate = true, remote;
 	u32 flag;
-	int ret;
+	int ret, code;
 
 	/*
 	 * The flag goes into every line so a console log from the field
@@ -1307,8 +1375,14 @@ static void h713_power_gate(void)
 	}
 
 	if (gate) {
-		h713_gate_wait(&key);
-		printf("gate: power key, booting\n");
+		remote = h713_gate_remote_start();
+		code = h713_gate_wait(&key, remote);
+		if (remote)
+			h713_gate_ir_stop();
+		if (code < 0)
+			printf("gate: power key, booting\n");
+		else
+			printf("gate: remote power key (NEC %04x), booting\n", code);
 	}
 
 	/*

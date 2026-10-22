@@ -94,6 +94,19 @@ config H713_POWER_GATE
 	  For shipping images. Leave this off for bench, netboot and recovery
 	  builds, which must come up on mains alone.
 
+config H713_POWER_GATE_IR
+	bool "H713: the remote's power key starts the board from the gate too"
+	depends on H713_POWER_GATE
+	default y
+	help
+	  While the gate waits on the ARM core, read the IR receiver (R_CIR on
+	  PL9) in the same loop as the key and decode NEC: the power key of
+	  either stock remote - the HY310's (address 0x02, command 0x1d) or
+	  the original HY300's (address 0x00, command 0x14) - starts the board
+	  as the power key does. Pin, clock and receiver go back to what the
+	  gate found before U-Boot goes on. With crust running on the ARISC
+	  the gate leaves the remote alone and waits for the key, as before.
+
 config DRAM_SUN50I_A133
 	bool
 	help
