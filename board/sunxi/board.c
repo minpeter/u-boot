@@ -620,10 +620,22 @@ static void status_led_init(void)
 #endif
 }
 
+#ifdef CONFIG_H713_BOARD_L018
+void h713_l018_lamp_fan_off(void);
+#endif
+
 void sunxi_board_init(void)
 {
 	int power_failed = 0;
 
+#ifdef CONFIG_H713_BOARD_L018
+	/*
+	 * The L018's PB5 is lamp and fan ON at its reset level (board/sunxi/
+	 * h713_l018.c): off from the SPL's first board step, not only in
+	 * U-Boot proper, where they ran for about a second after power-on.
+	 */
+	h713_l018_lamp_fan_off();
+#endif
 	if (CONFIG_IS_ENABLED(SUNXI_LED_STATUS))
 		status_led_init();
 
