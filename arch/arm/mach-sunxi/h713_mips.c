@@ -5650,11 +5650,24 @@ static int h713_disp_stock_panel_power(void)
 	printf("H713 panel: stock power pre-delay 550 ms\n");
 	mdelay(550);
 
+#ifdef CONFIG_H713_BOARD_L018
+	/*
+	 * The L018: PF6 is not driven under its stock firmware, and its PH9
+	 * is low - set before the reset pulse, which is when a panel takes
+	 * over pins like a scan direction (a PH9 change at run time showed
+	 * nothing, 24.10.2026). PH9 then stays out of the list below.
+	 */
+	sunxi_gpio_set_pull(reset, SUNXI_GPIO_PULL_DOWN);
+	clrbits_le32((void *)H713_PH_DATA, BIT(9));
+	sunxi_gpio_set_cfgpin(SUNXI_GPH(9), SUNXI_GPIO_OUTPUT);
+	printf("H713 panel: L018 - PF6 left alone, PH9 low\n");
+#else
 	sunxi_gpio_set_pull(power, SUNXI_GPIO_PULL_DOWN);
 	sunxi_gpio_set_pull(reset, SUNXI_GPIO_PULL_DOWN);
 
 	setbits_le32((void *)H713_PF_DATA, BIT(6));
 	sunxi_gpio_set_cfgpin(power, SUNXI_GPIO_OUTPUT);
+#endif
 
 	clrbits_le32((void *)H713_PH_DATA, BIT(16));
 	sunxi_gpio_set_cfgpin(reset, SUNXI_GPIO_OUTPUT);
@@ -5682,7 +5695,11 @@ static int h713_disp_stock_panel_power(void)
 	 * Panel power is not something to leave to a pin's reset default.
 	 */
 	if (h713_disp_panel == &h713_panel_cfg_hy310) {
+#ifdef CONFIG_H713_BOARD_L018
+		static const u8 pins[] = { 19, 15, 8 };	/* PH9 stays low */
+#else
 		static const u8 pins[] = { 19, 15, 8, 9 };
+#endif
 		uint i;
 
 		for (i = 0; i < ARRAY_SIZE(pins); i++) {
@@ -5691,8 +5708,13 @@ static int h713_disp_stock_panel_power(void)
 					      SUNXI_GPIO_OUTPUT);
 		}
 		mdelay(5);
+#ifdef CONFIG_H713_BOARD_L018
+		printf("H713 panel: vendor panel lines PH19/PH15/PH8 "
+		       "driven high, PH9 low (PH_DAT=%08x)\n", readl(H713_PH_DATA));
+#else
 		printf("H713 panel: vendor panel lines PH19/PH15/PH8/PH9 "
 		       "driven high (PH_DAT=%08x)\n", readl(H713_PH_DATA));
+#endif
 	}
 
 	pf_dat = readl(H713_PF_DATA);

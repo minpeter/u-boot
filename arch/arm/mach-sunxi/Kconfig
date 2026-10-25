@@ -107,6 +107,20 @@ config H713_POWER_GATE_IR
 	  gate found before U-Boot goes on. With crust running on the ARISC
 	  the gate leaves the remote alone and waits for the key, as before.
 
+
+config H713_BOARD_L018
+	bool "H713: the L018's lamp, fan and panel lines"
+	depends on MACH_SUN50I_H713
+	help
+	  The L018 builds from the HY310's base (same DRAM words, panel and
+	  display firmware) but differs in five lines, read off a running unit
+	  under its stock firmware (24.10.2026): PB5 left at its reset level
+	  is lamp and fan ON; the lamp dims on PWM2 at PB4 as the duty rises
+	  (stock std 50 %), and an undriven PB4 is full light; the fan's speed
+	  is PWM0 on PH17 (stock std 70 %); the panel's PH9 is low under
+	  stock and PF6 is not driven. With this option the gate holds lamp
+	  and fan off, the board comes up at the stock std mode, and the
+	  HY310 panel sequence leaves PF6 alone and keeps PH9 low.
 config DRAM_SUN50I_A133
 	bool
 	help

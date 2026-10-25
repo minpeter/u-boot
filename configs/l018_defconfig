@@ -1,0 +1,89 @@
+# MagCubic HY310 (HY260_QZ713_V3.1) -- board base.
+#
+# This is what the board is. What a build is *for* comes from a role fragment
+# in configs/fragments/, merged on top with scripts/kconfig/merge_config.sh -m
+# and make olddefconfig; build/uboot-build.sh does both. Six builds of this
+# board exist and docs/uboot/README.md has the matrix.
+#
+# The base is the shipping build minus the three lines that make it the
+# shipping build: the power gate, the environment file and the boot command.
+# Everything else stays here, including the USB gadget and the eMMC
+# environment, because a fragment can switch those off and have every symbol
+# that hangs off them follow, while a fragment that switches them on leaves
+# their dependants at whatever the base already decided. Merged fragments
+# subtract reliably and add unreliably, so the base carries the superset.
+CONFIG_ARM=y
+CONFIG_ARCH_SUNXI=y
+CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy310"
+CONFIG_DRAM_CLK=792
+CONFIG_SPL=y
+# DDR3 (type 3). The value set below is the bench board's; only the clock
+# differs (bench 624, this board 792). tpr0..tpr2 are never read on the DDR3
+# path of dram_sun50iw12.c (only the LPDDR3 arm unpacks them), para2 and tpr13
+# are what the flash tool writes; the rest is this board's own boot0. See
+# docs/tools/h713-probe.md.
+CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+CONFIG_DRAM_SUNXI_ODT_EN=0x1
+CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
+CONFIG_DRAM_SUNXI_PARA1=0x000010f4
+CONFIG_DRAM_SUNXI_PARA2=0x04000000
+CONFIG_DRAM_SUNXI_MR0=0x00001c70
+CONFIG_DRAM_SUNXI_MR1=0x00000040
+CONFIG_DRAM_SUNXI_MR2=0x00000018
+CONFIG_DRAM_SUNXI_MR3=0x00000000
+CONFIG_DRAM_SUNXI_TPR0=0x00482151
+CONFIG_DRAM_SUNXI_TPR1=0x01b1a94c
+CONFIG_DRAM_SUNXI_TPR2=0x0006e04d
+CONFIG_DRAM_SUNXI_TPR3=0xb4787896
+CONFIG_DRAM_SUNXI_TPR4=0x00000000
+CONFIG_DRAM_SUNXI_TPR5=0x48484848
+CONFIG_DRAM_SUNXI_TPR6=0x00000048
+CONFIG_DRAM_SUNXI_TPR7=0x1620121e
+CONFIG_DRAM_SUNXI_TPR8=0x00000000
+CONFIG_DRAM_SUNXI_TPR9=0x00000000
+CONFIG_DRAM_SUNXI_TPR10=0x00000000
+CONFIG_DRAM_SUNXI_TPR11=0x44340000
+CONFIG_DRAM_SUNXI_TPR12=0x00006666
+CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+CONFIG_MACH_SUN50I_H713=y
+CONFIG_H713_POWERON_LIGHT_FAN=y
+CONFIG_H713_MIPS_BOOT=y
+CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+CONFIG_MMC0_CD_PIN=""
+CONFIG_MMC_HS200_SUPPORT=y
+# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
+CONFIG_SUPPORT_EMMC_BOOT=y
+CONFIG_USB_EHCI_HCD=y
+CONFIG_USB_OHCI_HCD=y
+# CONFIG_WATCHDOG is not set
+CONFIG_WDT=y
+CONFIG_USB_MUSB_GADGET=y
+CONFIG_CMD_USB_MASS_STORAGE=y
+# CONFIG_USB_ETHER is not set
+CONFIG_CONSOLE_MUX=y
+CONFIG_SYS_CONSOLE_IS_IN_ENV=y
+CONFIG_USB_FUNCTION_ACM=y
+# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
+CONFIG_SYSRESET=y
+CONFIG_SYSRESET_PSCI=y
+CONFIG_CMD_POWEROFF=y
+CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
+# No "usb start" in the preboot: the host-side USB scan cost 2 to 5 s on every
+# boot and nothing in the product boot reads a USB device (no keyboard, no USB
+# boot medium; the installer role uses the gadget, not the host). The two
+# reboot-mode magics stay: "reboot fastboot" and "reboot bootloader" from Linux.
+CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi"
+# CONFIG_ENV_IS_IN_FAT is not set
+CONFIG_ENV_IS_IN_MMC=y
+CONFIG_ENV_OFFSET=0x700000
+CONFIG_ENV_MMC_DEVICE_INDEX=1
+CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+CONFIG_H713_VENDOR_CHAINLOAD=y
+CONFIG_CMD_WDT=y
+CONFIG_CMD_GPIO=y
+CONFIG_IDENT_STRING=" L018"
+CONFIG_H713_BOARD_L018=y

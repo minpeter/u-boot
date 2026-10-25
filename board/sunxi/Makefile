@@ -8,6 +8,7 @@
 # Wolfgang Denk, DENX Software Engineering, wd@denx.de.
 obj-y	+= board.o
 obj-$(CONFIG_H713_POWER_GATE_IR)	+= h713_gate_ir.o
+obj-$(CONFIG_H713_BOARD_L018)	+= h713_l018.o
 obj-$(CONFIG_H713_VENDOR_CHAINLOAD)	+= h713_vendor_chain.o \
 					   h713_vendor_chain_tramp.o
 obj-$(CONFIG_SUN7I_GMAC)	+= gmac.o

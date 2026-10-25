@@ -1395,11 +1395,28 @@ static void h713_power_gate(void)
 }
 #endif
 
+#ifdef CONFIG_H713_BOARD_L018
+void h713_l018_lamp_fan_off(void);
+void h713_l018_lamp_fan_std(void);
+#endif
+
 int board_late_init(void)
 {
+#ifdef CONFIG_H713_BOARD_L018
+	/*
+	 * The L018's PB5 is lamp and fan ON at its reset level and its PB4
+	 * full light (board/sunxi/h713_l018.c): drive both before the gate,
+	 * or the gate is a lit, loud board waiting for a key.
+	 */
+	h713_l018_lamp_fan_off();
+#endif
 #ifdef CONFIG_H713_POWER_GATE
 	/* Must run before the power lines: the gate is their absence. */
 	h713_power_gate();
+#endif
+#ifdef CONFIG_H713_BOARD_L018
+	/* The stock std mode on PWM2 and PWM0, then PB5 up. */
+	h713_l018_lamp_fan_std();
 #endif
 #ifdef CONFIG_H713_POWERON_LIGHT_FAN
 	h713_poweron_lines();
