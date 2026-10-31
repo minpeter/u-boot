@@ -32,6 +32,9 @@ ifndef CONFIG_XPL_BUILD
 obj-y	+= el2_to_aarch32.o
 obj-$(CONFIG_H713_MIPS_BOOT)	+= h713_mips.o
 obj-$(CONFIG_H713_MIPS_BOOT)	+= h713_hdcp14.o
+ifdef CONFIG_H713_MIPS_BOOT
+obj-$(CONFIG_CONSOLE_RECORD)	+= h713_conlog.o
+endif
 endif
 endif
 

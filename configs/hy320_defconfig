@@ -118,3 +118,9 @@ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
 CONFIG_H713_VENDOR_CHAINLOAD=y
 CONFIG_CMD_WDT=y
 CONFIG_CMD_GPIO=y
+# No serial console on the one HY320 we have (its owner will not open it): U-Boot
+# records its own console output, and `h713_conlog` (arch/arm/mach-sunxi/
+# h713_conlog.c) copies the record to memory so that bootcmd can leave it on the
+# eMMC for Linux to read.
+CONFIG_CONSOLE_RECORD=y
+CONFIG_CONSOLE_RECORD_OUT_SIZE=0x40000
