@@ -121,6 +121,22 @@ config H713_BOARD_L018
 	  stock and PF6 is not driven. With this option the gate holds lamp
 	  and fan off, the board comes up at the stock std mode, and the
 	  HY310 panel sequence leaves PF6 alone and keeps PH9 low.
+
+config H713_BOARD_HY320
+	bool "H713: the HY320's panel row and panel lines"
+	depends on MACH_SUN50I_H713 && !H713_BOARD_L018
+	help
+	  The HY320 declares project 0x30 like the HY310 but its own
+	  panel_config.ini asks for another raster: 2200x1125 at 164 MHz
+	  where the HY310's is 2128x1120 at 143 MHz. With this option
+	  project 0x30 takes the HY320's row in h713_mips.c (display PLL
+	  and spread spectrum as its own stock U-Boot computes them, the
+	  mixer records as its own LogoRegData.bin carries them), and the
+	  panel sequence drives only the lines its stock tree names --
+	  panel_power_en PH19, panel_gpio_0 PH16, panel_gpio_1 PH15. PF6
+	  (on this board the SD card detect) and PH8/PH9 (no panel_gpio_2/3
+	  in its tree) are left alone. Everything else is the HY310 path.
+
 config DRAM_SUN50I_A133
 	bool
 	help

@@ -386,8 +386,11 @@ static const struct h713_panel_cfg h713_panel_cfg_board_b = {
  * is carried rather than left at the vendor default.
  *
  * dual_port is 1 here where board B has 0.
+ *
+ * An HY320 build maps 0x30 to its own row below, and nothing else names
+ * this one there; __maybe_unused keeps that build quiet.
  */
-static const struct h713_panel_cfg h713_panel_cfg_hy310 = {
+static const struct h713_panel_cfg h713_panel_cfg_hy310 __maybe_unused = {
 	.mapping = 0, .color_depth = 8, .odd_even = 0,
 	.dual_port = 1, .mirror_mode = 0,
 	.inv_de = 0, .inv_hsync = 0, .inv_vsync = 0, .inv_dclk = 1,
@@ -409,6 +412,98 @@ static const struct h713_panel_cfg h713_panel_cfg_hy310 = {
 	.ssc_mask = 0xffffffff, .ssc_reg = 0xc8d0362f,
 	.layer_h_mask = 0xffff,
 };
+
+#ifdef CONFIG_H713_BOARD_HY320
+/*
+ * The HY320's panel: 1920x1080 dual port, project ID 0x30 like the HY310's,
+ * and a raster of its own. Nothing here has been read off a running unit:
+ * the board has no UART and has never run our firmware. The row is what the
+ * board's own stock U-Boot (2018.05-00018-gd7a124a, Apr 19 2024; the u-boot
+ * item of the sunxi-package at LBA 24576 of the owner's dump) does with the
+ * board's own two files, the LogoRegData.bin it ships and its Reserve0
+ * panel_config.ini. Where our patch table writes a site stock leaves alone,
+ * the row carries the value the file already holds there, so the write
+ * changes nothing.
+ *
+ * What stock patches, read out of its patch function (0x4a023cdc, thumb):
+ * 0x05800000 (mapping, depth, swap, inversions), 0x058c0020/24 (currents),
+ * 0x0588000c (port count), 0x058c0014 (PLL), 0x058c0018 (spread spectrum),
+ * 0x05600140 (mirror) and the two totals. Not one porch: 0x0525c004/1c/20/30
+ * /34, 0x0524c004/14 and 0x0528008c/84/88 appear in no patch in that binary.
+ * The ini says the same about itself -- PanelHsync/Vsync/HBP/VBP stand under
+ * "LVDS checkboard timing. Only for debug", and stock reads them only in its
+ * checkerboard TCON writer (0x4a024380).
+ *
+ * PLL. Stock's code (0x4a023e64..0x4a023ece) takes PanelDCLK, multiplies by
+ * 7 and, for a single port, by 2, and searches a post-divider p = 8..1 for
+ * an exact multiple of 24 MHz; with none it falls to p = 1 and the FLOOR of
+ * the quotient. It writes (n - 1) << 8 | (p - 1) << 2 into the record:
+ *
+ *	HY310   143001600 * 7      / 24e6 = 41.71 -> 41   its log: "n:41"
+ *	board B  62000000 * 7 * 2  / 24e6 = 36.17 -> 36   A10's PLL sweep
+ *	HY320   164000000 * 7      / 24e6 = 47.83 -> 47
+ *
+ * So 24 MHz * 47 = 1128 MHz and, through the /7 of a dual link, 161.14 MHz
+ * of DCLK -- 1.74 % below the ini's 164 MHz, which is how stock runs this
+ * board too. installer/h713/panelrow.py derives the same 47.
+ *
+ * Spread spectrum. Stock's code (0x4a023f42..0x4a024172) recentres the
+ * waveform the file's record already describes: bottom 0x311e and step 0x95
+ * of this file's 0xc950311e give the old centre, SpreadSpectrumStep 10 (1 %)
+ * and SpreadSpectrumSpan 0 (31.5 kHz) the new band, clamped into
+ * [24 MHz * n, 24 MHz * (n + 1) - 10 Hz]. Run with the HY310's n = 41 it
+ * yields exactly that board's logged "wave bottom:0x362f, wave step:0x8d
+ * ... reg_value:0xc8d0362f"; run with n = 47 it yields 0xca1026d3 (bottom
+ * 0x26d3, step 0xa1).
+ *
+ * The mixer and DE porches below are therefore NOT the ini's 2/8/148/12
+ * but the file's own records for this project (timing group 2, DE group
+ * 0): 0525c004 = 00001003 (hsync 16, vsync 3), 0525c01c = 07800054
+ * (16 + 68 = 84), 0525c020 = 04380010 (3 + 13 = 16), 05280088 = 00000010,
+ * 0528008c = 00000010 (layer X 16). Two sites stay where our table acts and
+ * stock does not, as on every board: 0x0524c004[31:16] takes the width and
+ * 0x0524c014[15:8] the vsync (3; the file holds 2).
+ *
+ * The totals are the ini's raw 2200/1125, so the minus-one convention of the
+ * patch table writes 04640897 -- which is the file's own record. Stock's
+ * own patch writes the raw 2200/1125 (04650898) there; this tree's
+ * convention is the one the HY310 and board B were repaired to, and on this
+ * board it amounts to leaving the record alone.
+ */
+static const struct h713_panel_cfg h713_panel_cfg_hy320 = {
+	/* panel_config.ini; equal to the file's 05800000 = 01e0a40c */
+	.mapping = 0, .color_depth = 8, .odd_even = 0,
+	.dual_port = 1, .mirror_mode = 0,
+	/*
+	 * PanelInvHSync is 2 in the ini. Stock's field insert (0x4a023c7c)
+	 * and ours both keep (value & 1), so bit 16 gets 0; the row says what
+	 * reaches the register.
+	 */
+	.inv_de = 0, .inv_hsync = 0, .inv_vsync = 0, .inv_dclk = 1,
+	/* ini; equal to the file's 058c0020/24 = 6f0f007f */
+	.de_current = 47, .odd_current = 7, .even_current = 7,
+	.ssc_en = 1,
+	.pll_n_plus_1 = 47,
+	.htotal = 2200, .vtotal = 1125,
+	/* the file's records, not the ini's checkerboard 2/8/148/12 */
+	.hsync = 16, .vsync = 3, .hbp = 68, .vbp = 13,
+	.width = 1920, .height = 1080,
+	/* panel_config.ini: PanelHsyncPol 1, PanelVsyncPol 1. */
+	.hsync_pol = 1, .vsync_pol = 1,
+	/* the file's 05800000[4:3]; ColorDepth 8 */
+	.lvds_bitsel = 1,
+	/* the file's 0528008c; stock never patches it */
+	.layer_x = 16,
+	.ssc_mask = 0xffffffff, .ssc_reg = 0xca1026d3,
+	/* writes 1080, which is what the file's 05280084 = 04380780 holds */
+	.layer_h_mask = 0xffff,
+};
+
+/* The HY320 build's project 0x30 is the HY320's panel, not the HY310's. */
+#define H713_PANEL_CFG_0X30	h713_panel_cfg_hy320
+#else
+#define H713_PANEL_CFG_0X30	h713_panel_cfg_hy310
+#endif
 
 /*
  * The panel, by declared project ID.
@@ -433,13 +528,15 @@ static const struct h713_panel_cfg h713_panel_cfg_hy310 = {
  * boards: the HY350 declares 0x30 as well, and its panel_config.ini asks for
  * 2200x1125 at 148.5 MHz where the HY310 asks for 2128x1120 at 143.0 MHz.
  * Same resolution, same port count, different blanking. A board we have never
- * driven gets a profile of its own before it gets an entry here.
+ * driven gets a profile of its own before it gets an entry here. The HY320 is
+ * that case and has one: an HY320 build (CONFIG_H713_BOARD_HY320) maps 0x30
+ * to its own row above.
  */
 static const struct {
 	u32 project;
 	const struct h713_panel_cfg *panel;
 } h713_disp_panels[] = {
-	{ 0x30, &h713_panel_cfg_hy310 },
+	{ 0x30, &H713_PANEL_CFG_0X30 },
 	{ 0x34, &h713_panel_cfg_board_b },
 };
 
@@ -5661,6 +5758,16 @@ static int h713_disp_stock_panel_power(void)
 	clrbits_le32((void *)H713_PH_DATA, BIT(9));
 	sunxi_gpio_set_cfgpin(SUNXI_GPH(9), SUNXI_GPIO_OUTPUT);
 	printf("H713 panel: L018 - PF6 left alone, PH9 low\n");
+#elif defined(CONFIG_H713_BOARD_HY320)
+	/*
+	 * The HY320: PF6 is not a panel line here but the SD card detect
+	 * (stock trees: sdmmc cd-gpios = <&pio 5 6 0x11>, PF6 active low with
+	 * a pull-up), and its panel_power_en is PH19, driven below. Driving
+	 * PF6 high as an output would fight the card switch. Left alone, as
+	 * its stock firmware leaves it.
+	 */
+	sunxi_gpio_set_pull(reset, SUNXI_GPIO_PULL_DOWN);
+	printf("H713 panel: HY320 - PF6 left alone (its SD card detect)\n");
 #else
 	sunxi_gpio_set_pull(power, SUNXI_GPIO_PULL_DOWN);
 	sunxi_gpio_set_pull(reset, SUNXI_GPIO_PULL_DOWN);
@@ -5694,9 +5801,23 @@ static int h713_disp_stock_panel_power(void)
 	 * at all, and the image came up minutes late and then flickered away.
 	 * Panel power is not something to leave to a pin's reset default.
 	 */
-	if (h713_disp_panel == &h713_panel_cfg_hy310) {
+	if (h713_disp_panel == &H713_PANEL_CFG_0X30) {
 #ifdef CONFIG_H713_BOARD_L018
 		static const u8 pins[] = { 19, 15, 8 };	/* PH9 stays low */
+#elif defined(CONFIG_H713_BOARD_HY320)
+		/*
+		 * The HY320's stock trees (U-Boot's and the kernel's, tvtop@
+		 * 5700000) name four lines, <&pio bank pin flags>:
+		 *	panel_power_en = <0x02 0x07 0x13 0x20>	PH19
+		 *	panel_bl_en    = <0x02 0x01 0x05 0x00>	PB5
+		 *	panel_gpio_0   = <0x02 0x07 0x10 0x20>	PH16
+		 *	panel_gpio_1   = <0x02 0x07 0x0f 0x20>	PH15
+		 * and no panel_gpio_2/3. Its stock U-Boot asks for exactly
+		 * panel_power_en, panel_gpio_0..3 and panel_bl_en (0x4a022ea6
+		 * ..0x4a022f1e) and drops the ones the tree lacks, so PH8 and
+		 * PH9 are never driven under stock. Here neither.
+		 */
+		static const u8 pins[] = { 19, 15 };
 #else
 		static const u8 pins[] = { 19, 15, 8, 9 };
 #endif
@@ -5711,6 +5832,9 @@ static int h713_disp_stock_panel_power(void)
 #ifdef CONFIG_H713_BOARD_L018
 		printf("H713 panel: vendor panel lines PH19/PH15/PH8 "
 		       "driven high, PH9 low (PH_DAT=%08x)\n", readl(H713_PH_DATA));
+#elif defined(CONFIG_H713_BOARD_HY320)
+		printf("H713 panel: vendor panel lines PH19/PH15 driven high, "
+		       "PH8/PH9 left alone (PH_DAT=%08x)\n", readl(H713_PH_DATA));
 #else
 		printf("H713 panel: vendor panel lines PH19/PH15/PH8/PH9 "
 		       "driven high (PH_DAT=%08x)\n", readl(H713_PH_DATA));

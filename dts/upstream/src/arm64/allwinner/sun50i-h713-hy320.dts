@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * MagCubic HY320 projector. One unit, its owner's, dumped in full; nobody
+ * here has held one.
+ *
+ * Like the HY310's and the HY300 Pro's trees, this is an include of the bench
+ * board's rather than a copy, so that the trees cannot drift and a boot log
+ * names the board it is on. The DRAM block that distinguishes this board
+ * lives in configs/hy320_defconfig, not here.
+ *
+ * Not described here: the panel. It declares project id 0x30 and its
+ * panel_config.ini a 2200x1125 raster at 164 MHz; no node in any of these
+ * trees describes a panel, the display coprocessor drives it from its own
+ * tables, and the row U-Boot patches those tables with is chosen by
+ * CONFIG_H713_BOARD_HY320 in arch/arm/mach-sunxi/h713_mips.c.
+ *
+ * Nothing else about this board has been measured under our firmware, so
+ * nothing else is overridden. When something is measured, it belongs here.
+ */
+
+#include "sun50i-h713-hy200-qz713df-a1.dts"
+
+/ {
+	model = "MagCubic HY320";
+	compatible = "magcubic,hy320", "allwinner,sun50i-h713";
+};

@@ -1,0 +1,120 @@
+# HY320 (MagCubic) -- board base. One unit, its owner's, dumped in full over
+# ADB on 31.10.2026; nothing of ours has run on it yet.
+#
+# Same shape as hy310_defconfig and hy300_pro_defconfig: this file says what
+# the hardware is, a role fragment in configs/fragments/ says what a build is
+# for, and build/uboot-build.sh merges the two (docs/uboot/README.md, "Which
+# defconfig"). Everything outside the DRAM block, the device tree name, the
+# identification string and CONFIG_H713_BOARD_HY320 is the HY300 Pro's base,
+# which is the HY310's minus HS200 -- see below.
+#
+# **No image is shipped for this board.** It is below `verified`
+# (boards/hy320, boards/README.md honesty rule). The only build this base is
+# meant for is the stage 5 *test image*, built on purpose (`--test-image`),
+# named `-TEST`, and flashed by that owner alone. The unit has no UART, so
+# every choice below takes the stock behaviour over a guess.
+#
+# Where the values come from:
+#   - the DRAM block is this board's own: the 24 words of the vendor boot0 at
+#     LBA 16 of the owner's dump (installer/h713/profiles/hy320.py, "dram"),
+#     equal to the HY350 image's word for word. Nothing in it is borrowed,
+#     with one deliberate exception, para2 and tpr13: the boot0 at LBA 16
+#     says 0x00000000 / 0x34010100, the second boot0 copy at LBA 256 of the
+#     same eMMC says 0x04000000 / 0xb4016103 -- the pair the vendor flash
+#     tool writes, and the pair every working base in this fork runs
+#     (hy310, l018, hy300_pro). This file takes the LBA 256 pair.
+#   - CONFIG_DRAM_CLK=792 is the boot0's own clock, and the HY310's. At 792
+#     the DDR3 path takes the same branches as on the HY310 (below the
+#     800 MHz speed-bin split, above the clk > 672 PHY arm of
+#     iw12_phy_train()), so nothing in it is new.
+#   - tpr11/tpr12 0x44440000/0x00005555 are this board's (and the HY350's,
+#     HY300 T08's and HY300 Pro's); the HY310 runs 0x44340000/0x00006666.
+#   - tpr0..tpr2 are in the file for completeness only: the DDR3 arm of
+#     iw12_set_timing() in arch/arm/mach-sunxi/dram_sun50iw12.c never reads
+#     them; only the LPDDR3 arm unpacks them.
+#   - DX_ODT, DX_DRI and CA_DRI are not part of the 24-word boot0 block: not
+#     this board's, the values every H713 base in the fork carries.
+#   - no CONFIG_MMC_HS200_SUPPORT. The stock eMMC node does offer
+#     mmc-hs200-1_8v (and hs400, 200 MHz), but HS200 with this driver's
+#     tuning has been run on the HY310 only (644feba7e43: "The other H713
+#     boards keep MMC high speed until someone with one of them reports");
+#     l018 carries it because it is the HY310's base. A board without a
+#     console takes the 52 MHz that every H713 board here has booted with.
+#   - the device tree is sun50i-h713-hy320, an include of the bench board's
+#     plus model and compatible -- the pattern of the HY310's and HY300 Pro's.
+#   - CONFIG_H713_BOARD_HY320 gives project 0x30 this board's own panel row
+#     (its 2200x1125 raster at 164 MHz, not the HY310's 2128x1120 at 143 MHz)
+#     and drives only the panel lines its stock tree names (PH19, PH16, PH15;
+#     PF6 is this board's SD card detect). See arch/arm/mach-sunxi/Kconfig.
+CONFIG_ARM=y
+CONFIG_ARCH_SUNXI=y
+CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy320"
+CONFIG_DRAM_CLK=792
+CONFIG_SPL=y
+CONFIG_IDENT_STRING=" HY320"
+CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+CONFIG_DRAM_SUNXI_ODT_EN=0x1
+CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
+CONFIG_DRAM_SUNXI_PARA1=0x000010f4
+CONFIG_DRAM_SUNXI_PARA2=0x04000000
+CONFIG_DRAM_SUNXI_MR0=0x00001c70
+CONFIG_DRAM_SUNXI_MR1=0x00000040
+CONFIG_DRAM_SUNXI_MR2=0x00000018
+CONFIG_DRAM_SUNXI_MR3=0x00000000
+CONFIG_DRAM_SUNXI_TPR0=0x004a2195
+CONFIG_DRAM_SUNXI_TPR1=0x02423190
+CONFIG_DRAM_SUNXI_TPR2=0x0008b061
+CONFIG_DRAM_SUNXI_TPR3=0xb4787896
+CONFIG_DRAM_SUNXI_TPR4=0x00000000
+CONFIG_DRAM_SUNXI_TPR5=0x48484848
+CONFIG_DRAM_SUNXI_TPR6=0x00000048
+CONFIG_DRAM_SUNXI_TPR7=0x1620121e
+CONFIG_DRAM_SUNXI_TPR8=0x00000000
+CONFIG_DRAM_SUNXI_TPR9=0x00000000
+CONFIG_DRAM_SUNXI_TPR10=0x00000000
+CONFIG_DRAM_SUNXI_TPR11=0x44440000
+CONFIG_DRAM_SUNXI_TPR12=0x00005555
+CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+CONFIG_MACH_SUN50I_H713=y
+CONFIG_H713_POWERON_LIGHT_FAN=y
+CONFIG_H713_MIPS_BOOT=y
+CONFIG_H713_BOARD_HY320=y
+CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+CONFIG_MMC0_CD_PIN=""
+# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
+CONFIG_SUPPORT_EMMC_BOOT=y
+CONFIG_USB_EHCI_HCD=y
+CONFIG_USB_OHCI_HCD=y
+# CONFIG_WATCHDOG is not set
+CONFIG_WDT=y
+CONFIG_USB_MUSB_GADGET=y
+CONFIG_CMD_USB_MASS_STORAGE=y
+# CONFIG_USB_ETHER is not set
+CONFIG_CONSOLE_MUX=y
+CONFIG_SYS_CONSOLE_IS_IN_ENV=y
+CONFIG_USB_FUNCTION_ACM=y
+# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
+CONFIG_SYSRESET=y
+CONFIG_SYSRESET_PSCI=y
+CONFIG_CMD_POWEROFF=y
+CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
+# No "usb start" in the preboot, as on the HY310 since 15.09.: the host-side
+# USB scan cost 2 to 5 s on every boot and nothing in the product boot reads a
+# USB device (no keyboard, no USB boot medium; the installer role brings its
+# own PREBOOT and uses the gadget, not the host). The kernel starts the
+# controllers itself -- patch 0005a clears the HCI PHYs' SIDDQ bit, which is
+# what "usb start" was standing in for. The two reboot-mode magics stay:
+# "reboot fastboot" and "reboot bootloader" from Linux.
+CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi"
+# CONFIG_ENV_IS_IN_FAT is not set
+CONFIG_ENV_IS_IN_MMC=y
+CONFIG_ENV_OFFSET=0x700000
+CONFIG_ENV_MMC_DEVICE_INDEX=1
+CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+CONFIG_H713_VENDOR_CHAINLOAD=y
+CONFIG_CMD_WDT=y
+CONFIG_CMD_GPIO=y
