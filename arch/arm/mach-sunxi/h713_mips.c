@@ -6605,6 +6605,26 @@ static int h713_disp_run(ulong blob, u32 project, bool skip_hdcp_wait,
 	if (ret)
 		return ret;
 
+#ifdef CONFIG_H713_BOARD_HY320
+	/*
+	 * The HY320's LogoRegData.bin ("ADT-3 2024" family) leaves
+	 * 0x058c0000 (and its mirror at 0x058c1000) at 0x10000040 from the
+	 * prologue, and its DE group ends there. The L018's file -- the same
+	 * 1920x1080 dual-port class of panel -- closes its DE group with
+	 * 0x058c0000 = 0 (record +0x22dc). Bit 28 of that word blanks the
+	 * video plane at the mixer and nothing else: with it set, a frame the
+	 * firmware has processed reaches the panel block's own probes
+	 * (0x051c0144, 0x051c0304) and the wall stays black, while the RGB
+	 * channel shows normally. Measured on the owner's unit 01.11.2026:
+	 * 0x10000000 alone blanks the video, 0x00000040 alone does not, and
+	 * the L018's word 0 shows it under both display firmwares.
+	 */
+	writel(0, 0x058c0000);
+	writel(0, 0x058c1000);
+	printf("H713 panel: HY320 - 0x058c0000 cleared as the L018's DE group "
+	       "does (bit 28 blanks the video plane)\n");
+#endif
+
 	if (stock_panel_power) {
 		ret = h713_disp_stock_panel_power();
 		if (ret)
