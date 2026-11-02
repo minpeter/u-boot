@@ -6607,22 +6607,32 @@ static int h713_disp_run(ulong blob, u32 project, bool skip_hdcp_wait,
 
 #ifdef CONFIG_H713_BOARD_HY320
 	/*
-	 * The HY320's LogoRegData.bin ("ADT-3 2024" family) leaves
-	 * 0x058c0000 (and its mirror at 0x058c1000) at 0x10000040 from the
-	 * prologue, and its DE group ends there. The L018's file -- the same
-	 * 1920x1080 dual-port class of panel -- closes its DE group with
-	 * 0x058c0000 = 0 (record +0x22dc). Bit 28 of that word blanks the
-	 * video plane at the mixer and nothing else: with it set, a frame the
-	 * firmware has processed reaches the panel block's own probes
-	 * (0x051c0144, 0x051c0304) and the wall stays black, while the RGB
-	 * channel shows normally. Measured on the owner's unit 01.11.2026:
-	 * 0x10000000 alone blanks the video, 0x00000040 alone does not, and
-	 * the L018's word 0 shows it under both display firmwares.
+	 * The HY320's LogoRegData.bin ("ADT-3 2024" family) ends its DE group
+	 * where the L018's -- the same 1920x1080 dual-port class of panel --
+	 * goes on with seven more words. Two parts of that tail are needed
+	 * here, measured on the owner's unit 01.11.2026 by eye at the wall:
+	 *
+	 * 0x058c0000 = 0 (record +0x22dc; 0x058c1000 mirrors it). This board's
+	 * file leaves 0x10000040 from the prologue, and with bit 28 set the
+	 * output takes the RGB channel alone: a video frame the firmware has
+	 * processed reaches the panel block's probes (0x051c0144, 0x051c0304)
+	 * and the wall stays black. 0x10000000 alone blanks it, 0x00000040
+	 * alone does not, under both display firmwares.
+	 *
+	 * 0x051c0014 = 0x18000000 and 0x051c0028 = 0x00000030 (+0x22ec,
+	 * +0x230c). With bit 28 above clear, the RGB channel reaches the wall
+	 * only through the panel block's mixer (0x051c006c), and that shows
+	 * no RGB pixel -- opaque or not -- until 0x051c0014 bit 27 and
+	 * 0x051c0028[5:4] are set as the L018's file sets them; neither does
+	 * it alone. The firmware's TSE keeps both: its INIT_VPANEL masks
+	 * leave 0x051c0014[28:27] and 0x051c0028[12:0] to the ARM.
 	 */
 	writel(0, 0x058c0000);
 	writel(0, 0x058c1000);
-	printf("H713 panel: HY320 - 0x058c0000 cleared as the L018's DE group "
-	       "does (bit 28 blanks the video plane)\n");
+	writel(0x18000000, 0x051c0014);
+	writel(0x00000030, 0x051c0028);
+	printf("H713 panel: HY320 - the L018's DE tail: 058c0000=0 (video), "
+	       "051c0014=18000000 051c0028=30 (RGB over video)\n");
 #endif
 
 	if (stock_panel_power) {
