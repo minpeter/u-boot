@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * "HY300 T08" projector (silkscreen HY300_T08_QZ713_V3), reported in issue #7
+ * of well0nez/allwinner-h713-linux by its owner. Nobody here has held one.
+ *
+ * Like the HY300 Pro's tree, this is an include of the bench board's rather
+ * than a copy, for the same reason: a board should boot a device tree named
+ * after itself, so that a boot log says which board it is running on. The
+ * DRAM clock and words that distinguish this board (640 MHz, the HY350's
+ * family block) live in configs/hy300_t08_defconfig, not here.
+ *
+ * What is *not* claimed by this file: the panel. It declares project id 0x34,
+ * 1280x720 single port (panel_config.ini); no node here describes a panel,
+ * the display coprocessor drives it from its own tables, and its "ADT-3 2024"
+ * firmware is the HY350's and HY320's (h713_mips.c).
+ *
+ * Nothing about this board has been measured as different from the bench
+ * board's tree, so nothing else is overridden.
+ */
+
+#include "sun50i-h713-hy200-qz713df-a1.dts"
+
+/ {
+	model = "MagCubic HY300 T08";
+	compatible = "magcubic,hy300-t08", "allwinner,sun50i-h713";
+};
